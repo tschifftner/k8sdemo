@@ -1,0 +1,68 @@
+#!/usr/bin/env groovy
+
+properties([
+    buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10')),
+    pipelineTriggers([
+        pollSCM('H/15 * * * *')
+    ])
+])
+
+node {
+    def frontendPath = 'app/frontend/'
+
+    stage('Preparations') {
+        echo "Current branch: $env.BRANCH_NAME"
+        checkout scm
+    }
+
+    try {
+        parallel(
+            frontend: {
+                stage('Build Frontend Assets') {
+                    docker.image('aoepeople/fe-build-env:1.1.0').inside() {
+                        sh "cd ${frontendPath} && yarn install"
+                        sh "cd ${frontendPath} && yarn run build"
+                    }
+                }
+
+                stage('Archive Artifacts') {
+                    sh "tar -czvf fe-assets.tar.gz -C ${frontendPath}/dist/ ."
+                    archiveArtifacts artifacts: 'fe-assets.tar.gz', onlyIfSuccessful: true
+                }
+            },
+
+            app: {
+                stage('Analyze App Core') {
+                    docker.image('thebod/golang-qa').inside() {
+                        sh "cd app && golint . | tee ../core_lint.txt"
+                        sh "cd app && go vet . | tee ../core_vet.txt"
+                        sh "cd app && gofmt -l -s ."
+                    }
+                }
+
+                stage('Test App Core') {
+                    docker.image('thebod/golang-qa').inside {
+                        sh "cd app && go test -v . | go2xunit -fail -output app_tests.xml"
+                    }
+                }
+            }
+        )
+    } finally {
+        junit "app/app_tests.xml"
+    }
+
+
+    stage('Build Docker container') {
+        dir('app') {
+            docker.build('thebod/app')
+        }
+        sh 'docker push thebod/app'
+    }
+
+    stage('Deploy to dev-latest') {
+       //build job: 'deploy_latest'
+       echo 'deploying to latest!'
+       sh 'kubectl apply -f app/kubernetes.yml'
+    }
+
+}
