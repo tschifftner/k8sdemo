@@ -54,9 +54,9 @@ node {
 
     stage('Build Docker container') {
         dir('app') {
-            docker.build('thebod/app')
+            docker.build('tschifftner/app')
         }
-        sh 'docker push thebod/app'
+        sh 'docker push tschifftner/app'
     }
 
     stage('Deploy to dev-latest') {
