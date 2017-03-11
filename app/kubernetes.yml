@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: thebod/app
+        image: tschifftner/app
         imagePullPolicy: Always
         ports:
         - containerPort: 3333
